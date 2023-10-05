@@ -71,7 +71,7 @@ func main() {
 
 		if db.CheckNumberAddr(update.Message.Chat.UserName, 10, dbConn) {
 			if utils.CheckIfValidAddress(message) {
-				if !db.CheckAddr(message, dbConn) {
+				if db.CheckAddr(message, dbConn) {
 					if err != nil {
 						log.Printf("%s insert error", err)
 					}

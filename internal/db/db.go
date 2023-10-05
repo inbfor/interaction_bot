@@ -52,7 +52,7 @@ func CheckAddr(addr string, db *sql.DB) bool {
 
 	row := db.QueryRow(checkAddr, addr)
 
-	err := row.Scan(&amount)
+	err := row.Scan(amount)
 
 	if err != nil {
 		return false
