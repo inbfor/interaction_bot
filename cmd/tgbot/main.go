@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
+	"os"
 	"transaction_bot/internal/db"
 	"transaction_bot/internal/model"
 	"transaction_bot/internal/utils"
@@ -14,10 +14,9 @@ import (
 )
 
 func main() {
-	apiKey := flag.String("apiKey", "", "Api Key for bot From BotFather")
-	flag.Parse()
+	apiKey := os.Getenv("NOTIFICATION_BOT_TOKEN")
 
-	bot, err := tgbotapi.NewBotAPI(*apiKey)
+	bot, err := tgbotapi.NewBotAPI(apiKey)
 	if err != nil {
 		log.Panic(err)
 	}

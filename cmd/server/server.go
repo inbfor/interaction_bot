@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"transaction_bot/internal/db"
 	"transaction_bot/internal/model"
@@ -21,8 +21,7 @@ import (
 
 func main() {
 
-	apiKeyAlchemy := flag.String("alchKey", "", "Api Key for Alchemy Notify API")
-	flag.Parse()
+	apiKeyAlchemy := os.Getenv("ALCHEMY_API_KEY")
 
 	mux := http.NewServeMux()
 
@@ -40,7 +39,7 @@ func main() {
 
 		json.Unmarshal(msg.Data, &msgChannel)
 
-		jsn, _ := createWebHook(tun.URL(), msgChannel.Address, *apiKeyAlchemy)
+		jsn, _ := createWebHook(tun.URL(), msgChannel.Address, apiKeyAlchemy)
 
 		log.Println(msgChannel)
 
