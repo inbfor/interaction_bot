@@ -22,7 +22,6 @@ func main() {
 	}
 
 	dbConn, _ := db.Connect("users.db")
-	// stateOf := make(map[string]config.State)
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
