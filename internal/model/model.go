@@ -32,3 +32,9 @@ type Event struct {
 		} `json:"log"`
 	} `json:"activity"`
 }
+
+type ChannelJson struct {
+	Chat_id int64  `json:"chat_id"`
+	TgNick  string `json:"tgNick"`
+	Address string `json:"address"`
+}

@@ -3,11 +3,13 @@ package webhooks
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"transaction_bot/internal/db"
 	"transaction_bot/internal/model"
 
 	"github.com/nats-io/nats.go"
@@ -25,13 +27,13 @@ func jsonToAlchemyWebhookEvent(body []byte) (*model.EventJson, error) {
 type AlchemyRequestHandler func(http.ResponseWriter, *http.Request, *model.EventJson, *nats.Conn)
 
 type AlchemyRequestHandlerMiddleware struct {
-	handler    AlchemyRequestHandler
-	signingKey string
-	nc         *nats.Conn
+	handler AlchemyRequestHandler
+	dbConn  *sql.DB
+	nc      *nats.Conn
 }
 
-func NewAlchemyRequestHandlerMiddleware(handler AlchemyRequestHandler, signingKey string, nc *nats.Conn) *AlchemyRequestHandlerMiddleware {
-	return &AlchemyRequestHandlerMiddleware{handler, signingKey, nc}
+func NewAlchemyRequestHandlerMiddleware(handler AlchemyRequestHandler, dbConn *sql.DB, nc *nats.Conn) *AlchemyRequestHandlerMiddleware {
+	return &AlchemyRequestHandlerMiddleware{handler, dbConn, nc}
 }
 
 func isValidSignatureForStringBody(
@@ -46,6 +48,9 @@ func isValidSignatureForStringBody(
 }
 
 func (arh *AlchemyRequestHandlerMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	var usr db.User
+
 	signature := r.Header.Get("x-alchemy-signature")
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -55,12 +60,26 @@ func (arh *AlchemyRequestHandlerMiddleware) ServeHTTP(w http.ResponseWriter, r *
 	}
 	r.Body.Close()
 
-	isValidSignature := isValidSignatureForStringBody(body, signature, []byte(arh.signingKey))
+	var jsn model.EventJson
+	var eventJsn model.Event
+
+	json.Unmarshal(body, &jsn)
+	json.Unmarshal(jsn.Event, &eventJsn)
+
+	usr, err = db.SelectSingleUser(eventJsn.Activity[0].FromAddress, arh.dbConn)
+	usr2, err := db.SelectSingleUser(eventJsn.Activity[0].ToAddress, arh.dbConn)
+
+	log.Println(usr)
+
+	isValidSignature := isValidSignatureForStringBody(body, signature, []byte(usr.SigningKey))
 	if !isValidSignature {
-		errMsg := "Signature validation failed, unauthorized!"
-		http.Error(w, errMsg, http.StatusForbidden)
-		log.Panic(errMsg)
-		return
+		isValidSignature = isValidSignatureForStringBody(body, signature, []byte(usr2.SigningKey))
+		if !isValidSignature {
+			errMsg := "Signature validation failed, unauthorized!"
+			http.Error(w, errMsg, http.StatusForbidden)
+			log.Panic(errMsg)
+			return
+		}
 	}
 
 	event, err := jsonToAlchemyWebhookEvent(body)

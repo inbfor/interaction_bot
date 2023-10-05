@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"strings"
+	"transaction_bot/internal/db"
 	"transaction_bot/internal/model"
 	notify "transaction_bot/internal/webhooks"
 
@@ -19,22 +21,41 @@ import (
 
 func main() {
 
+	apiKeyAlchemy := flag.String("alchKey", "", "Api Key for Alchemy Notify API")
+	flag.Parse()
+
 	mux := http.NewServeMux()
 
 	tun, err := runNgrok(context.Background())
+	dbConn, _ := db.Connect("users.db")
 
 	if err != nil {
 		log.Println(err)
 	}
-
-	json, _ := createWebHook(fmt.Sprintf("%s/handle", tun.URL()), "0x74A5EDD315951cCBcC91FC85F7D7ee67b60d71D8")
 	nc, _ := nats.Connect(nats.DefaultURL)
+
+	nc.Subscribe("addresses", func(msg *nats.Msg) {
+
+		var msgChannel model.ChannelJson
+
+		json.Unmarshal(msg.Data, &msgChannel)
+
+		jsn, _ := createWebHook(tun.URL(), msgChannel.Address, *apiKeyAlchemy)
+
+		log.Println(msgChannel)
+
+		err := db.InsertIntoTable(msgChannel.Chat_id, msgChannel.TgNick, msgChannel.Address, jsn.Data.SigningKey, dbConn)
+
+		if err != nil {
+			log.Println(err)
+		}
+	})
 	// Register handler for Alchemy Notify webhook events
 	mux.Handle(
 		// TODO: update to your own webhook path
-		"/handle",
+		"/",
 		// Middleware needed to validate the alchemy signature
-		notify.NewAlchemyRequestHandlerMiddleware(handleWebhook, json.Data.SigningKey, nc),
+		notify.NewAlchemyRequestHandlerMiddleware(handleWebhook, dbConn, nc),
 	)
 
 	// Listen to Alchemy Notify webhook events
@@ -50,7 +71,6 @@ func handleWebhook(w http.ResponseWriter, req *http.Request, event *model.EventJ
 	log.Println(event)
 
 	nc.Publish("event", event.Event)
-	// Be sure to respond with 200 when you successfully process the event
 }
 
 func runNgrok(ctx context.Context) (ngrok.Tunnel, error) {
@@ -67,7 +87,7 @@ func runNgrok(ctx context.Context) (ngrok.Tunnel, error) {
 	return tun, nil
 }
 
-func createWebHook(urlOfNgrok string, addr string) (CreatedWebHook, error) {
+func createWebHook(urlOfNgrok string, addr string, apiKey string) (CreatedWebHook, error) {
 
 	var jsonCreatedWebhook CreatedWebHook
 
@@ -79,7 +99,7 @@ func createWebHook(urlOfNgrok string, addr string) (CreatedWebHook, error) {
 	req, _ := http.NewRequest("POST", url, payload)
 
 	req.Header.Add("accept", "application/json")
-	req.Header.Add("X-Alchemy-Token", "Vw5p6rjCZccltsOHEpVnuimej-pbWdb1")
+	req.Header.Add("X-Alchemy-Token", apiKey)
 	req.Header.Add("content-type", "application/json")
 
 	res, _ := http.DefaultClient.Do(req)

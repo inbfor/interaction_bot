@@ -11,6 +11,7 @@ type User struct {
 	Chat_id     int64
 	Tg_name     string
 	Eth_address string
+	SigningKey  string
 }
 
 func Connect(dbconn string) (*sql.DB, error) {
@@ -30,13 +31,13 @@ func Connect(dbconn string) (*sql.DB, error) {
 
 }
 
-func SelectSingleUser(tgNick string, db *sql.DB) (User, error) {
+func SelectSingleUser(address string, db *sql.DB) (User, error) {
 
 	var user User
 
-	row := db.QueryRow(selectSingleUser, tgNick)
+	row := db.QueryRow(selectSingleUser, address)
 
-	err := row.Scan(&user.Chat_id, &user.Tg_name, &user.Eth_address)
+	err := row.Scan(&user.Chat_id, &user.Tg_name, &user.Eth_address, &user.SigningKey)
 
 	if err != nil {
 		return User{}, err
@@ -53,15 +54,29 @@ func CheckAddr(addr string, db *sql.DB) bool {
 
 	err := row.Scan(&amount)
 
-	log.Println(addr)
-	log.Println(amount)
-	log.Println(err)
-
 	if err != nil {
 		return false
 	}
 
 	if amount == 0 {
+		return false
+	} else {
+		return true
+	}
+}
+
+func CheckNumberAddr(tgNick string, number int, db *sql.DB) bool {
+
+	var amount int
+
+	row := db.QueryRow(checkNumberAddr, tgNick)
+
+	err := row.Scan(&amount)
+	if err != nil {
+		return false
+	}
+
+	if amount >= number {
 		return false
 	} else {
 		return true
@@ -86,7 +101,7 @@ func SelectUsers(addressFrom string, addressTo string, db *sql.DB) ([]User, erro
 
 		var user User
 
-		err = rows.Scan(&user.Chat_id, &user.Tg_name, &user.Eth_address)
+		err = rows.Scan(&user.Chat_id, &user.Tg_name, &user.Eth_address, &user.SigningKey)
 		if err != nil {
 			log.Println(err)
 		}
@@ -101,14 +116,14 @@ func SelectUsers(addressFrom string, addressTo string, db *sql.DB) ([]User, erro
 	return users, nil
 }
 
-func InsertIntoTable(chat_id int64, tgNick string, eth_address string, db *sql.DB) error {
+func InsertIntoTable(chat_id int64, tgNick string, eth_address string, signingKey string, db *sql.DB) error {
 	stmt, err := db.Prepare(insertIntoTable)
 
 	if err != nil {
 		return err
 	}
 
-	_, err = stmt.Exec(chat_id, tgNick, eth_address)
+	_, err = stmt.Exec(chat_id, tgNick, eth_address, signingKey)
 
 	if err != nil {
 		return err
@@ -119,28 +134,43 @@ func InsertIntoTable(chat_id int64, tgNick string, eth_address string, db *sql.D
 
 const create string = `
   CREATE TABLE IF NOT EXISTS users (
-  CHAT_ID INTEGER NOT NULL PRIMARY KEY,
+  CHAT_ID INTEGER NOT NULL,
   TG_NAME TEXT NOT NULL,
-  ADDRESS TEXT
+  ADDRESS TEXT UNIQUE,
+  SIGNING_KEY TEXT NOT NULL UNIQUE
   );`
 
 const selectSingleUser string = `
-  Select *
+Select *
+From (
+  Select CHAT_ID, TG_NAME, lower(ADDRESS) as addr, SIGNING_KEY
   From users
-  Where TG_NAME = ?
+)
+Where addr = ?
   `
 const insertIntoTable string = `
-INSERT INTO users VALUES ( ?, ?, ?)
+INSERT INTO users VALUES ( ?, ?, ?, ?)
 `
 
 const selectUsers string = `
   Select *
-  From users
-  Where ADDRESS = ?
+  From (
+	Select CHAT_ID, TG_NAME, lower(ADDRESS) as addr, SIGNING_KEY
+	From users
+  )
+  Where addr = ?
   `
 
 const checkAddr string = `
   Select COUNT(*)
+  From (
+	Select TG_NAME, lower(ADDRESS) as addr
+	From users)
+  Where addr = ?
+  `
+
+const checkNumberAddr string = `
+  Select COUNT(*)
   From users
-  Where ADDRESS = ?
+  Where TG_NAME = ?
   `
